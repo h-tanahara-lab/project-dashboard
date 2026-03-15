@@ -1,0 +1,1208 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>プロジェクト進捗ダッシュボード</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #F8F9FC;
+    --surface: #FFFFFF;
+    --surface2: #F1F4F9;
+    --border: #E2E8F2;
+    --accent: #1B4FD8;
+    --accent-light: #EEF2FF;
+    --accent2: #059669;
+    --accent2-light: #ECFDF5;
+    --accent3: #D97706;
+    --accent3-light: #FFFBEB;
+    --danger: #DC2626;
+    --danger-light: #FEF2F2;
+    --text: #0F1729;
+    --text2: #4A5568;
+    --text3: #94A3B8;
+    --shadow: 0 1px 3px rgba(15,23,41,0.06), 0 4px 16px rgba(15,23,41,0.04);
+    --shadow-lg: 0 4px 24px rgba(15,23,41,0.10);
+    --radius: 12px;
+    --radius-sm: 8px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Noto Sans JP', sans-serif;
+    background: var(--bg); color: var(--text);
+    min-height: 100vh; font-size: 14px; line-height: 1.6;
+  }
+
+  /* ===== ローディングオーバーレイ ===== */
+  .loading-overlay {
+    position: fixed; inset: 0; background: rgba(248,249,252,0.9);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    z-index: 9999; transition: opacity 0.3s;
+  }
+  .loading-overlay.hidden { opacity: 0; pointer-events: none; }
+  .loading-spinner {
+    width: 40px; height: 40px;
+    border: 3px solid var(--border); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+  }
+  .loading-text { margin-top: 16px; font-size: 13px; color: var(--text2); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ===== ヘッダー ===== */
+  .header {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 0 32px; position: sticky; top: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: space-between; height: 64px;
+  }
+  .header-left { display: flex; align-items: center; gap: 16px; }
+  .logo { display: flex; align-items: center; gap: 10px; }
+  .logo-mark {
+    width: 32px; height: 32px; background: var(--accent); border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-size: 14px; font-weight: 700; font-family: 'DM Mono', monospace;
+  }
+  .logo-text { font-size: 15px; font-weight: 700; color: var(--text); letter-spacing: -0.02em; }
+  .header-divider { width: 1px; height: 24px; background: var(--border); }
+
+  .project-selector-wrap { position: relative; }
+  .project-selector {
+    display: flex; align-items: center; gap: 8px; padding: 7px 14px;
+    background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text);
+    transition: all 0.15s; user-select: none; min-width: 180px;
+  }
+  .project-selector:hover, .project-selector.open { background: var(--accent-light); border-color: var(--accent); }
+  .project-selector .arrow { margin-left: auto; color: var(--text3); font-size: 10px; transition: transform 0.2s; }
+  .project-selector.open .arrow { transform: rotate(180deg); }
+
+  .project-dropdown {
+    position: absolute; top: calc(100% + 6px); left: 0; min-width: 240px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow-lg); z-index: 300; overflow: hidden;
+    display: none; animation: dropIn 0.15s ease;
+  }
+  .project-dropdown.open { display: block; }
+  @keyframes dropIn { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
+
+  .dropdown-section-label { padding: 10px 16px 6px; font-size: 10px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; }
+  .dropdown-item {
+    display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+    cursor: pointer; transition: background 0.1s; font-size: 13px; color: var(--text);
+  }
+  .dropdown-item:hover { background: var(--surface2); }
+  .dropdown-item.active { background: var(--accent-light); color: var(--accent); font-weight: 600; }
+  .dropdown-badge { width: 22px; height: 22px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; flex-shrink: 0; }
+  .dropdown-divider { height: 1px; background: var(--border); margin: 4px 0; }
+  .dropdown-add { display: flex; align-items: center; gap: 8px; padding: 10px 16px; cursor: pointer; font-size: 13px; color: var(--accent); font-weight: 500; border-top: 1px solid var(--border); transition: background 0.1s; }
+  .dropdown-add:hover { background: var(--accent-light); }
+
+  .header-right { display: flex; align-items: center; gap: 12px; }
+  .last-updated { font-size: 12px; color: var(--text3); font-family: 'DM Mono', monospace; }
+
+  .btn { padding: 8px 16px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; cursor: pointer; border: none; transition: all 0.15s; font-family: 'Noto Sans JP', sans-serif; }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-primary:hover { background: #1542BE; }
+  .btn-ghost { background: transparent; color: var(--text2); border: 1px solid var(--border); }
+  .btn-ghost:hover { background: var(--surface2); }
+  .btn-danger { background: var(--danger-light); color: var(--danger); border: 1px solid #FECACA; }
+  .btn-danger:hover { background: #FEE2E2; }
+
+  .main { max-width: 1200px; margin: 0 auto; padding: 32px; display: grid; gap: 24px; }
+
+  .project-overview {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 28px 32px; box-shadow: var(--shadow);
+    display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: start;
+  }
+  .phase-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; background: var(--accent-light); color: var(--accent); border: 1px solid #C7D7F8; }
+  .phase-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+  .project-title { font-size: 22px; font-weight: 700; color: var(--text); letter-spacing: -0.03em; margin-top: 12px; margin-bottom: 4px; }
+  .project-meta { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 12px; }
+  .meta-item { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text2); }
+  .meta-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text3); }
+  .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .stat-card { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 16px; text-align: center; min-width: 90px; }
+  .stat-num { font-size: 26px; font-weight: 700; color: var(--text); font-family: 'DM Mono', monospace; letter-spacing: -0.04em; line-height: 1; margin-bottom: 4px; }
+  .stat-label { font-size: 11px; color: var(--text3); font-weight: 500; }
+
+  .tabs { display: flex; gap: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 6px; box-shadow: var(--shadow); }
+  .tab { flex: 1; padding: 10px 16px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; cursor: pointer; border: none; background: transparent; color: var(--text2); transition: all 0.15s; font-family: 'Noto Sans JP', sans-serif; display: flex; align-items: center; justify-content: center; gap: 6px; }
+  .tab.active { background: var(--accent); color: white; box-shadow: 0 2px 8px rgba(27,79,216,0.3); }
+  .tab:not(.active):hover { background: var(--surface2); color: var(--text); }
+  .tab-badge { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; font-size: 10px; font-weight: 700; background: rgba(255,255,255,0.3); color: inherit; }
+  .tab:not(.active) .tab-badge { background: var(--border); color: var(--text2); }
+
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  .meeting-list { display: grid; gap: 16px; }
+  .meeting-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); transition: box-shadow 0.2s; }
+  .meeting-card:hover { box-shadow: var(--shadow-lg); }
+  .meeting-header { padding: 20px 24px 16px; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--border); }
+  .meeting-date { font-family: 'DM Mono', monospace; font-size: 12px; color: var(--accent); font-weight: 500; background: var(--accent-light); padding: 3px 8px; border-radius: 4px; margin-bottom: 6px; display: inline-block; }
+  .meeting-title { font-size: 15px; font-weight: 600; color: var(--text); }
+  .meeting-participants { font-size: 12px; color: var(--text3); margin-top: 4px; }
+  .meeting-body { padding: 20px 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .meeting-section-title { font-size: 11px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; }
+  .decision-item { display: flex; gap: 8px; padding: 8px 0; border-bottom: 1px dashed var(--border); font-size: 13px; color: var(--text2); line-height: 1.5; }
+  .decision-item:last-child { border-bottom: none; }
+  .decision-icon { width: 18px; height: 18px; border-radius: 50%; background: var(--accent-light); color: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 10px; flex-shrink: 0; margin-top: 1px; }
+
+  .tasks-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .filter-group { display: flex; gap: 6px; }
+  .filter-btn { padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid var(--border); background: var(--surface); color: var(--text2); transition: all 0.15s; font-family: 'Noto Sans JP', sans-serif; }
+  .filter-btn.active { border-color: var(--accent); background: var(--accent-light); color: var(--accent); }
+
+  .task-table { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
+  .task-table-header { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1.5fr; padding: 12px 20px; background: var(--surface2); border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; gap: 12px; }
+  .task-row { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1.5fr; padding: 14px 20px; border-bottom: 1px solid var(--border); align-items: center; gap: 12px; transition: background 0.1s; }
+  .task-row:last-child { border-bottom: none; }
+  .task-row:hover { background: var(--surface2); }
+  .task-name { font-size: 13px; color: var(--text); font-weight: 500; line-height: 1.4; }
+  .task-name.done { text-decoration: line-through; color: var(--text3); font-weight: 400; }
+  .task-assignee { font-size: 12px; color: var(--text2); display: flex; align-items: center; gap: 6px; }
+  .avatar { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; flex-shrink: 0; }
+  .avatar-h { background: #DBEAFE; color: #1D4ED8; }
+  .avatar-c { background: #D1FAE5; color: #065F46; }
+  .avatar-b { background: #FEF3C7; color: #92400E; }
+  .task-due { font-family: 'DM Mono', monospace; font-size: 12px; color: var(--text2); }
+  .task-due.overdue { color: var(--danger); font-weight: 600; }
+  .status-badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .status-todo { background: var(--surface2); color: var(--text3); border: 1px solid var(--border); }
+  .status-doing { background: #FEF3C7; color: #92400E; border: 1px solid #FDE68A; }
+  .status-done { background: var(--accent2-light); color: #065F46; border: 1px solid #A7F3D0; }
+  .status-waiting { background: var(--danger-light); color: var(--danger); border: 1px solid #FECACA; }
+  .priority-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .p-high { background: var(--danger); }
+  .p-mid { background: var(--accent3); }
+  .p-low { background: var(--accent2); }
+
+  .timeline { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow); }
+  .timeline-item { display: flex; gap: 16px; padding-bottom: 24px; position: relative; }
+  .timeline-item:last-child { padding-bottom: 0; }
+  .timeline-item::before { content: ''; position: absolute; left: 11px; top: 24px; bottom: 0; width: 2px; background: var(--border); }
+  .timeline-item:last-child::before { display: none; }
+  .timeline-dot { width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--border); background: var(--surface); display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; position: relative; z-index: 1; }
+  .timeline-dot.done { background: var(--accent2); border-color: var(--accent2); color: white; }
+  .timeline-dot.current { background: var(--accent); border-color: var(--accent); color: white; }
+  .timeline-dot.upcoming { background: var(--surface2); border-color: var(--border); color: var(--text3); }
+  .timeline-content { flex: 1; }
+  .timeline-date { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--text3); margin-bottom: 4px; }
+  .timeline-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+  .timeline-desc { font-size: 12px; color: var(--text2); line-height: 1.5; }
+
+  .memo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+  .memo-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow); }
+  .memo-card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .memo-icon { width: 32px; height: 32px; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; font-size: 16px; }
+  .memo-card-title { font-size: 13px; font-weight: 600; color: var(--text); }
+  .memo-content { font-size: 13px; color: var(--text2); line-height: 1.7; }
+  .memo-tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-top: 10px; }
+
+  .modal-overlay { position: fixed; inset: 0; background: rgba(15,23,41,0.5); z-index: 200; display: none; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--surface); border-radius: var(--radius); padding: 32px; width: 90%; max-width: 560px; box-shadow: 0 20px 60px rgba(15,23,41,0.2); animation: modalIn 0.2s ease; max-height: 90vh; overflow-y: auto; }
+  @keyframes modalIn { from { transform: translateY(12px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  .modal-title { font-size: 18px; font-weight: 700; color: var(--text); margin-bottom: 24px; letter-spacing: -0.02em; }
+  .form-group { margin-bottom: 16px; }
+  .form-label { display: block; font-size: 12px; font-weight: 600; color: var(--text2); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .form-input, .form-select, .form-textarea { width: 100%; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; color: var(--text); background: var(--bg); font-family: 'Noto Sans JP', sans-serif; transition: border-color 0.15s; outline: none; }
+  .form-input:focus, .form-select:focus, .form-textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(27,79,216,0.1); }
+  .form-textarea { resize: vertical; min-height: 80px; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; }
+  .section-title { font-size: 16px; font-weight: 700; color: var(--text); letter-spacing: -0.02em; margin-bottom: 16px; }
+  .empty-state { text-align: center; padding: 48px 24px; color: var(--text3); font-size: 13px; }
+  .empty-icon { font-size: 32px; margin-bottom: 12px; }
+  .fade-in { animation: fadeIn 0.3s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+  .admin-badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; background: #FEF3C7; color: #92400E; border: 1px solid #FDE68A; cursor: pointer; transition: all 0.15s; }
+  .admin-badge:hover { background: #FDE68A; }
+  .admin-badge.active { background: #92400E; color: white; border-color: #92400E; }
+  .admin-only { display: none; }
+  body.admin-mode .admin-only { display: block; }
+  body.admin-mode .admin-only-flex { display: flex; }
+  .admin-only-flex { display: none; }
+  .admin-panel { background: #FFFBEB; border: 1px solid #FDE68A; border-radius: var(--radius); padding: 20px 24px; margin-bottom: 8px; display: none; }
+  body.admin-mode .admin-panel { display: block; }
+
+  /* AI解析エリア */
+  .ai-parse-area { background: linear-gradient(135deg, #EEF2FF 0%, #F0FDF4 100%); border: 2px dashed var(--accent); border-radius: var(--radius); padding: 20px; margin-bottom: 20px; position: relative; transition: all 0.3s; }
+  .ai-parse-area.parsing { border-color: var(--accent3); animation: borderPulse 1.5s infinite; }
+  @keyframes borderPulse { 0%, 100% { border-color: var(--accent); } 50% { border-color: var(--accent2); } }
+  .ai-parse-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .ai-parse-icon { width: 36px; height: 36px; background: var(--accent); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; color: white; }
+  .ai-parse-title { font-size: 14px; font-weight: 700; color: var(--text); }
+  .ai-parse-subtitle { font-size: 12px; color: var(--text2); margin-top: 2px; }
+  .ai-parse-textarea { width: 100%; min-height: 120px; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; color: var(--text); background: white; font-family: 'Noto Sans JP', sans-serif; resize: vertical; outline: none; transition: border-color 0.15s; line-height: 1.7; }
+  .ai-parse-textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(27,79,216,0.1); }
+  .ai-parse-textarea::placeholder { color: var(--text3); font-size: 12px; line-height: 1.8; }
+  .ai-parse-actions { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; gap: 12px; }
+  .ai-parse-btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px; background: var(--accent); color: white; border: none; border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; font-family: 'Noto Sans JP', sans-serif; }
+  .ai-parse-btn:hover { background: #1542BE; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(27,79,216,0.3); }
+  .ai-parse-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+  .ai-parse-btn .spinner { display: none; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.6s linear infinite; }
+  .ai-parse-btn.loading .spinner { display: block; }
+  .ai-parse-btn.loading .btn-text { display: none; }
+  .ai-parse-btn.loading .btn-loading-text { display: inline; }
+  .ai-parse-btn .btn-loading-text { display: none; }
+  .ai-parse-hint { font-size: 11px; color: var(--text3); display: flex; align-items: center; gap: 4px; }
+  .ai-parse-status { display: none; padding: 10px 14px; border-radius: var(--radius-sm); font-size: 12px; font-weight: 500; margin-top: 12px; animation: fadeIn 0.3s ease; }
+  .ai-parse-status.success { display: block; background: var(--accent2-light); color: #065F46; border: 1px solid #A7F3D0; }
+  .ai-parse-status.error { display: block; background: var(--danger-light); color: var(--danger); border: 1px solid #FECACA; }
+  .ai-divider { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; color: var(--text3); font-size: 12px; font-weight: 500; }
+  .ai-divider::before, .ai-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+  /* トースト通知 */
+  .toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; color: white; z-index: 9999; animation: toastIn 0.3s ease; box-shadow: var(--shadow-lg); }
+  .toast.success { background: var(--accent2); }
+  .toast.error { background: var(--danger); }
+  .toast.hidden { animation: toastOut 0.3s ease forwards; }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes toastOut { to { opacity: 0; transform: translateY(12px); } }
+
+  @media (max-width: 768px) {
+    .main { padding: 16px; }
+    .project-overview { grid-template-columns: 1fr; }
+    .meeting-body { grid-template-columns: 1fr; }
+    .task-table-header, .task-row { grid-template-columns: 2fr 1fr 1fr; }
+    .task-table-header > *:nth-child(4), .task-table-header > *:nth-child(5),
+    .task-row > *:nth-child(4), .task-row > *:nth-child(5) { display: none; }
+    .header { padding: 0 16px; }
+    .tabs { overflow-x: auto; }
+    .memo-grid { grid-template-columns: 1fr; }
+    .form-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ローディング -->
+<div class="loading-overlay" id="loading-overlay">
+  <div class="loading-spinner"></div>
+  <div class="loading-text">データを読み込み中...</div>
+</div>
+
+<header class="header">
+  <div class="header-left">
+    <div class="logo">
+      <div class="logo-mark">@</div>
+      <span class="logo-text">棚原AI社員チーム</span>
+    </div>
+    <div class="header-divider"></div>
+    <div class="project-selector-wrap">
+      <div class="project-selector" id="project-selector-btn" onclick="toggleDropdown()">
+        <span id="current-project-label">プロジェクトを選択</span>
+        <span class="arrow">▼</span>
+      </div>
+      <div class="project-dropdown" id="project-dropdown">
+        <div class="dropdown-section-label">クライアント</div>
+        <div id="dropdown-items"></div>
+        <div class="dropdown-divider"></div>
+        <div class="dropdown-add admin-only" onclick="openAddClientModal()">
+          <span>＋</span> 新しいクライアントを追加
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="header-right">
+    <span class="last-updated" id="last-updated-text"></span>
+    <div id="admin-badge" class="admin-badge" onclick="toggleAdminMode()" title="管理者モード">
+      🔒 <span id="admin-badge-text">管理者</span>
+    </div>
+    <button class="btn btn-ghost admin-only" onclick="openAddTaskModal()">＋ タスク</button>
+    <button class="btn btn-primary admin-only" onclick="openAddMeetingModal()">＋ MTG記録</button>
+  </div>
+</header>
+
+<main class="main">
+  <div class="project-overview fade-in" id="project-overview">
+    <div>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div class="phase-badge"><div class="phase-dot"></div><span id="current-phase">—</span></div>
+        <button class="admin-only btn btn-ghost" onclick="openEditClientModal()" style="font-size:12px;padding:4px 10px;">✏️ 編集</button>
+      </div>
+      <div class="project-title" id="project-title">クライアントを選択してください</div>
+      <div style="font-size:13px; color:var(--text2); margin-top:4px;" id="project-desc">左上のプルダウンからプロジェクトを選択してください</div>
+      <div class="project-meta">
+        <div class="meta-item"><div class="meta-dot"></div><span>開始：<strong id="meta-start">—</strong></span></div>
+        <div class="meta-item"><div class="meta-dot"></div><span>担当：<strong>棚原秀樹</strong></span></div>
+        <div class="meta-item admin-only-flex"><div class="meta-dot"></div><span>月額：<strong id="meta-fee">—</strong></span></div>
+      </div>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-num" id="stat-meetings">—</div><div class="stat-label">MTG回数</div></div>
+      <div class="stat-card"><div class="stat-num" id="stat-tasks-done">—</div><div class="stat-label">完了</div></div>
+      <div class="stat-card"><div class="stat-num" id="stat-tasks-todo">—</div><div class="stat-label">残タスク</div></div>
+    </div>
+  </div>
+
+  <div class="admin-panel fade-in" id="admin-panel">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <div style="font-size:13px;font-weight:700;color:#92400E;">🔑 管理者情報（チームメンバーには非表示）</div>
+      <button class="btn btn-danger" onclick="deleteCurrentClient()" style="font-size:12px;padding:6px 12px;">このクライアントを削除</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+      <div>
+        <div style="font-size:11px;font-weight:700;color:#92400E;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">月額</div>
+        <div style="font-size:20px;font-weight:700;color:#92400E;" id="admin-fee-display">—</div>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:700;color:#92400E;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">管理者メモ</div>
+        <textarea id="admin-memo-input" class="form-textarea" placeholder="チームメンバーに見せたくないメモ" style="min-height:60px;background:#FFFBEB;border-color:#FDE68A;font-size:12px;" oninput="saveAdminMemo()"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <div class="tabs fade-in">
+    <button class="tab active" onclick="switchTab('meetings', this)">📋 MTG記録 <span class="tab-badge" id="badge-meetings">0</span></button>
+    <button class="tab" onclick="switchTab('tasks', this)">✅ タスク <span class="tab-badge" id="badge-tasks">0</span></button>
+    <button class="tab" onclick="switchTab('timeline', this)">📍 進捗</button>
+    <button class="tab" onclick="switchTab('memos', this)">📎 メモ</button>
+  </div>
+
+  <div class="panel active fade-in" id="panel-meetings">
+    <div class="meeting-list" id="meeting-list">
+      <div class="empty-state"><div class="empty-icon">📋</div><div>クライアントを選択してください</div></div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-tasks">
+    <div class="tasks-header">
+      <div class="section-title">タスク一覧</div>
+      <div class="filter-group">
+        <button class="filter-btn active" onclick="filterTasks('all', this)">すべて</button>
+        <button class="filter-btn" onclick="filterTasks('todo', this)">未着手</button>
+        <button class="filter-btn" onclick="filterTasks('doing', this)">進行中</button>
+        <button class="filter-btn" onclick="filterTasks('done', this)">完了</button>
+      </div>
+    </div>
+    <div class="task-table">
+      <div class="task-table-header"><div>タスク名</div><div>担当</div><div>期限</div><div>優先度</div><div>ステータス</div></div>
+      <div id="task-list"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-timeline">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <div class="section-title">プロジェクト進捗</div>
+      <button class="btn btn-ghost admin-only" onclick="openAddTimelineModal()">＋ フェーズ追加</button>
+    </div>
+    <div class="timeline" id="timeline-list"></div>
+  </div>
+
+  <div class="panel" id="panel-memos">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <div class="section-title">メモ・共有資料</div>
+      <button class="btn btn-ghost admin-only" onclick="openAddMemoModal()">＋ メモ追加</button>
+    </div>
+    <div class="memo-grid" id="memo-list"></div>
+  </div>
+</main>
+
+<!-- パスワードモーダル -->
+<div class="modal-overlay" id="password-modal">
+  <div class="modal" style="max-width:360px;">
+    <div class="modal-title">🔑 管理者パスワード</div>
+    <div class="form-group">
+      <label class="form-label">パスワードを入力</label>
+      <input type="password" class="form-input" id="password-input" placeholder="パスワード" onkeydown="if(event.key==='Enter')checkPassword()">
+      <div id="password-error" style="color:var(--danger);font-size:12px;margin-top:6px;display:none;">パスワードが違います</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('password-modal')">キャンセル</button>
+      <button class="btn btn-primary" onclick="checkPassword()">ログイン</button>
+    </div>
+  </div>
+</div>
+
+<!-- クライアント編集モーダル -->
+<div class="modal-overlay" id="edit-client-modal">
+  <div class="modal">
+    <div class="modal-title">✏️ クライアント情報を編集</div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">会社コード</label><input type="text" class="form-input" id="edit-client-code" placeholder="例：A社"></div>
+      <div class="form-group"><label class="form-label">会社名</label><input type="text" class="form-input" id="edit-client-name" placeholder="例：C社 ホテル運営 AI導入支援"></div>
+    </div>
+    <div class="form-group"><label class="form-label">説明</label><input type="text" class="form-input" id="edit-client-desc"></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">業種</label><input type="text" class="form-input" id="edit-client-industry"></div>
+      <div class="form-group"><label class="form-label">サービス種別</label>
+        <select class="form-select" id="edit-client-service"><option>AI導入支援</option><option>戦略策定支援</option><option>AI人材育成</option></select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">契約開始月</label><input type="month" class="form-input" id="edit-client-start"></div>
+      <div class="form-group"><label class="form-label">月額（万円）</label><input type="number" class="form-input" id="edit-client-fee"></div>
+    </div>
+    <div class="form-group"><label class="form-label">現在のフェーズ</label><input type="text" class="form-input" id="edit-client-phase"></div>
+    <div class="form-group"><label class="form-label">バッジカラー</label>
+      <div style="display:flex;gap:8px;" id="edit-color-picker">
+        <div data-color="1B4FD8" style="width:28px;height:28px;border-radius:6px;background:#1B4FD8;cursor:pointer;" onclick="selectEditColor('1B4FD8',this)"></div>
+        <div data-color="059669" style="width:28px;height:28px;border-radius:6px;background:#059669;cursor:pointer;" onclick="selectEditColor('059669',this)"></div>
+        <div data-color="D97706" style="width:28px;height:28px;border-radius:6px;background:#D97706;cursor:pointer;" onclick="selectEditColor('D97706',this)"></div>
+        <div data-color="DC2626" style="width:28px;height:28px;border-radius:6px;background:#DC2626;cursor:pointer;" onclick="selectEditColor('DC2626',this)"></div>
+        <div data-color="7C3AED" style="width:28px;height:28px;border-radius:6px;background:#7C3AED;cursor:pointer;" onclick="selectEditColor('7C3AED',this)"></div>
+        <div data-color="0891B2" style="width:28px;height:28px;border-radius:6px;background:#0891B2;cursor:pointer;" onclick="selectEditColor('0891B2',this)"></div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('edit-client-modal')">キャンセル</button>
+      <button class="btn btn-primary" onclick="saveEditClient()">保存する</button>
+    </div>
+  </div>
+</div>
+
+<!-- クライアント追加モーダル -->
+<div class="modal-overlay" id="client-modal">
+  <div class="modal">
+    <div class="modal-title">🏢 クライアントを追加</div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">会社コード</label><input type="text" class="form-input" id="client-code" placeholder="例：A社"></div>
+      <div class="form-group"><label class="form-label">会社名</label><input type="text" class="form-input" id="client-name" placeholder="例：C社 ホテル運営 AI導入支援"></div>
+    </div>
+    <div class="form-group"><label class="form-label">説明</label><input type="text" class="form-input" id="client-desc"></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">業種</label><input type="text" class="form-input" id="client-industry"></div>
+      <div class="form-group"><label class="form-label">サービス種別</label>
+        <select class="form-select" id="client-service"><option>AI導入支援</option><option>戦略策定支援</option><option>AI人材育成</option></select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">契約開始月</label><input type="month" class="form-input" id="client-start"></div>
+      <div class="form-group"><label class="form-label">月額（万円）</label><input type="number" class="form-input" id="client-fee"></div>
+    </div>
+    <div class="form-group"><label class="form-label">現在のフェーズ</label><input type="text" class="form-input" id="client-phase" placeholder="例：フェーズ1：顧客DB構築"></div>
+    <div class="form-group"><label class="form-label">バッジカラー</label>
+      <div style="display:flex;gap:8px;" id="color-picker">
+        <div data-color="1B4FD8" style="width:28px;height:28px;border-radius:6px;background:#1B4FD8;cursor:pointer;border:3px solid #1B4FD8;" onclick="selectColor('1B4FD8',this)"></div>
+        <div data-color="059669" style="width:28px;height:28px;border-radius:6px;background:#059669;cursor:pointer;" onclick="selectColor('059669',this)"></div>
+        <div data-color="D97706" style="width:28px;height:28px;border-radius:6px;background:#D97706;cursor:pointer;" onclick="selectColor('D97706',this)"></div>
+        <div data-color="DC2626" style="width:28px;height:28px;border-radius:6px;background:#DC2626;cursor:pointer;" onclick="selectColor('DC2626',this)"></div>
+        <div data-color="7C3AED" style="width:28px;height:28px;border-radius:6px;background:#7C3AED;cursor:pointer;" onclick="selectColor('7C3AED',this)"></div>
+        <div data-color="0891B2" style="width:28px;height:28px;border-radius:6px;background:#0891B2;cursor:pointer;" onclick="selectColor('0891B2',this)"></div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('client-modal')">キャンセル</button>
+      <button class="btn btn-primary" onclick="addClient()">追加する</button>
+    </div>
+  </div>
+</div>
+
+<!-- MTG追加モーダル -->
+<div class="modal-overlay" id="meeting-modal">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-title">📋 ミーティング記録を追加</div>
+    <div class="ai-parse-area" id="ai-parse-area">
+      <div class="ai-parse-header">
+        <div class="ai-parse-icon">🤖</div>
+        <div>
+          <div class="ai-parse-title">AI議事録解析</div>
+          <div class="ai-parse-subtitle">議事録を貼り付けると、AIが自動で各項目に振り分けます</div>
+        </div>
+      </div>
+      <textarea class="ai-parse-textarea" id="ai-raw-notes" placeholder="ここに議事録をペーストしてください。&#10;&#10;例：&#10;2026年3月15日 第5回定例MTG&#10;参加者：棚原、山田社長&#10;&#10;■決定事項&#10;・DBの項目数を15項目に確定&#10;&#10;■次回TODO&#10;・【棚原】GASコード修正"></textarea>
+      <div class="ai-parse-actions">
+        <div class="ai-parse-hint">💡 どんな形式の議事録でもOK</div>
+        <button class="ai-parse-btn" id="ai-parse-btn" onclick="parseWithAI()">
+          <span class="spinner"></span>
+          <span class="btn-text">🤖 AIで解析する</span>
+          <span class="btn-loading-text">解析中...</span>
+        </button>
+      </div>
+      <div class="ai-parse-status" id="ai-parse-status"></div>
+    </div>
+    <div class="ai-divider">または手動入力</div>
+    <div class="form-group"><label class="form-label">日付</label><input type="date" class="form-input" id="mtg-date"></div>
+    <div class="form-group"><label class="form-label">タイトル・議題</label><input type="text" class="form-input" id="mtg-title" placeholder="例：第3回 進捗確認MTG"></div>
+    <div class="form-group"><label class="form-label">参加者</label><input type="text" class="form-input" id="mtg-participants" placeholder="例：棚原、田中社長"></div>
+    <div class="form-group"><label class="form-label">決定事項（1行ずつ）</label><textarea class="form-textarea" id="mtg-decisions" placeholder="例：顧客DBの項目を確定"></textarea></div>
+    <div class="form-group"><label class="form-label">次回までのToDo（1行ずつ）</label><textarea class="form-textarea" id="mtg-todos" placeholder="例：【棚原】GASコード修正"></textarea></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('meeting-modal')">キャンセル</button>
+      <button class="btn btn-primary" onclick="addMeeting()">追加する</button>
+    </div>
+  </div>
+</div>
+
+<!-- タスク追加モーダル -->
+<div class="modal-overlay" id="task-modal">
+  <div class="modal">
+    <div class="modal-title">✅ タスクを追加</div>
+    <div class="form-group"><label class="form-label">タスク名</label><input type="text" class="form-input" id="task-name" placeholder="例：GASコードのテスト実施"></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">担当</label>
+        <select class="form-select" id="task-assignee"><option value="棚原">棚原</option><option value="クライアント">クライアント</option><option value="両者">両者</option></select>
+      </div>
+      <div class="form-group"><label class="form-label">期限</label><input type="date" class="form-input" id="task-due"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">優先度</label>
+        <select class="form-select" id="task-priority"><option value="high">高</option><option value="mid" selected>中</option><option value="low">低</option></select>
+      </div>
+      <div class="form-group"><label class="form-label">ステータス</label>
+        <select class="form-select" id="task-status"><option value="todo">未着手</option><option value="doing">進行中</option><option value="done">完了</option><option value="waiting">確認待ち</option></select>
+      </div>
+    </div>
+    <div class="form-group"><label class="form-label">メモ（任意）</label><textarea class="form-textarea" id="task-memo" placeholder="補足情報" style="min-height:60px;"></textarea></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('task-modal')">キャンセル</button>
+      <button class="btn btn-primary" onclick="addTask()">追加する</button>
+    </div>
+  </div>
+</div>
+
+<!-- タイムライン追加モーダル -->
+<div class="modal-overlay" id="timeline-modal">
+  <div class="modal">
+    <div class="modal-title">📍 フェーズを追加</div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">時期</label><input type="text" class="form-input" id="tl-date" placeholder="例：2026/03"></div>
+      <div class="form-group"><label class="form-label">ステータス</label>
+        <select class="form-select" id="tl-status"><option value="done">完了</option><option value="current">進行中</option><option value="upcoming">予定</option></select>
+      </div>
+    </div>
+    <div class="form-group"><label class="form-label">フェーズ名</label><input type="text" class="form-input" id="tl-title" placeholder="例：プッシュメール自動生成の実装"></div>
+    <div class="form-group"><label class="form-label">説明</label><textarea class="form-textarea" id="tl-desc" style="min-height:60px;"></textarea></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('timeline-modal')">キャンセル</button>
+      <button class="btn btn-primary" onclick="addTimeline()">追加する</button>
+    </div>
+  </div>
+</div>
+
+<!-- メモ追加モーダル -->
+<div class="modal-overlay" id="memo-modal">
+  <div class="modal">
+    <div class="modal-title">📎 メモ・資料を追加</div>
+    <div class="form-group"><label class="form-label">タイトル</label><input type="text" class="form-input" id="memo-title" placeholder="例：要件定義メモ"></div>
+    <div class="form-group"><label class="form-label">内容</label><textarea class="form-textarea" id="memo-content"></textarea></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">種類</label>
+        <select class="form-select" id="memo-type"><option value="memo">📝 メモ</option><option value="link">🔗 リンク・資料</option><option value="decision">✅ 決定事項</option><option value="issue">⚠️ 課題</option></select>
+      </div>
+      <div class="form-group"><label class="form-label">URL（任意）</label><input type="url" class="form-input" id="memo-url" placeholder="https://..."></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('memo-modal')">キャンセル</button>
+      <button class="btn btn-primary" onclick="addMemo()">追加する</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// ★★★ GAS APIのURLをここに設定 ★★★
+// ============================================================
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbyPIxK0dd5r-tcBRwctlXdJcFOJySSHjo5kM_ZLKxhC8wcPSt6L5hJaXxjW0ddEfUWA/exec
+';
+// ============================================================
+
+// ============================================================
+// 状態管理
+// ============================================================
+let clients = [];
+let currentClientId = null;
+let currentClientData = { meetings: [], tasks: [], timeline: [], memos: [] };
+let isAdminMode = false;
+let currentFilter = 'all';
+let selectedColor = '1B4FD8';
+let editSelectedColor = '1B4FD8';
+const ADMIN_PASS = '123456789';
+
+// ============================================================
+// API通信
+// ============================================================
+async function apiGet(action, params = {}) {
+  const url = new URL(GAS_URL);
+  url.searchParams.set('action', action);
+  for (const [k, v] of Object.entries(params)) {
+    url.searchParams.set(k, v);
+  }
+  const res = await fetch(url.toString());
+  return res.json();
+}
+
+async function apiPost(action, body = {}) {
+  const url = new URL(GAS_URL);
+  url.searchParams.set('action', action);
+  const res = await fetch(url.toString(), {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' }, // GAS CORS対策
+    body: JSON.stringify(body),
+  });
+  return res.json();
+}
+
+function showToast(message, type = 'success') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = message;
+  document.body.appendChild(el);
+  setTimeout(() => { el.classList.add('hidden'); setTimeout(() => el.remove(), 300); }, 3000);
+}
+
+function showLoading() { document.getElementById('loading-overlay').classList.remove('hidden'); }
+function hideLoading() { document.getElementById('loading-overlay').classList.add('hidden'); }
+
+// ============================================================
+// 初期化
+// ============================================================
+document.addEventListener('DOMContentLoaded', async () => {
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('mtg-date').value = today;
+  document.getElementById('task-due').value = today;
+
+  document.addEventListener('click', e => {
+    if (!document.querySelector('.project-selector-wrap').contains(e.target)) closeDropdown();
+  });
+
+  document.querySelectorAll('.modal-overlay').forEach(overlay => {
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.classList.remove('open'); });
+  });
+
+  // クライアント一覧を読み込み
+  try {
+    const res = await apiGet('getClients');
+    if (res.success) {
+      clients = res.data;
+      renderDropdown();
+      // 前回選択したクライアントを復元
+      const savedId = sessionStorage.getItem('currentClientId');
+      if (savedId && clients.find(c => c.id === savedId)) {
+        await selectClient(savedId);
+      }
+    }
+  } catch(err) {
+    console.error('初期化エラー:', err);
+    showToast('データの読み込みに失敗しました', 'error');
+  }
+
+  hideLoading();
+  updateLastUpdated();
+});
+
+function updateLastUpdated() {
+  const d = new Date();
+  document.getElementById('last-updated-text').textContent =
+    `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')} 更新`;
+}
+
+// ============================================================
+// 管理者モード
+// ============================================================
+function toggleAdminMode() {
+  if (isAdminMode) {
+    isAdminMode = false;
+    document.body.classList.remove('admin-mode');
+    document.getElementById('admin-badge').classList.remove('active');
+    document.getElementById('admin-badge-text').textContent = '管理者';
+  } else {
+    document.getElementById('password-input').value = '';
+    document.getElementById('password-error').style.display = 'none';
+    document.getElementById('password-modal').classList.add('open');
+    setTimeout(() => document.getElementById('password-input').focus(), 100);
+  }
+}
+
+function checkPassword() {
+  if (document.getElementById('password-input').value === ADMIN_PASS) {
+    isAdminMode = true;
+    document.body.classList.add('admin-mode');
+    document.getElementById('admin-badge').classList.add('active');
+    document.getElementById('admin-badge-text').textContent = 'ログイン中';
+    closeModal('password-modal');
+    const client = clients.find(c => c.id === currentClientId);
+    if (client) refreshAdminPanel(client);
+  } else {
+    document.getElementById('password-error').style.display = 'block';
+    document.getElementById('password-input').value = '';
+    document.getElementById('password-input').focus();
+  }
+}
+
+function refreshAdminPanel(client) {
+  document.getElementById('admin-fee-display').textContent = client.fee ? `月額 ${client.fee}万円` : '未設定';
+  document.getElementById('admin-memo-input').value = client.adminMemo || '';
+}
+
+async function saveAdminMemo() {
+  if (!currentClientId) return;
+  const memo = document.getElementById('admin-memo-input').value;
+  await apiPost('updateClient', { id: currentClientId, adminMemo: memo });
+  const client = clients.find(c => c.id === currentClientId);
+  if (client) client.adminMemo = memo;
+}
+
+// ============================================================
+// プロジェクト選択
+// ============================================================
+function renderDropdown() {
+  document.getElementById('dropdown-items').innerHTML = clients.map(c => `
+    <div class="dropdown-item ${currentClientId === c.id ? 'active' : ''}" onclick="selectClient('${c.id}')">
+      <div class="dropdown-badge" style="background:#${c.color||'1B4FD8'}20; color:#${c.color||'1B4FD8'};">${(c.code||'?').charAt(0)}</div>
+      <div>
+        <div style="font-size:13px;font-weight:500;">${escHtml(c.code)}</div>
+        <div style="font-size:11px;color:var(--text3);">${escHtml(c.service)}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function selectClient(id) {
+  showLoading();
+  currentClientId = id;
+  sessionStorage.setItem('currentClientId', id);
+  const client = clients.find(c => c.id === id);
+  if (!client) { hideLoading(); return; }
+
+  // ヘッダー更新
+  document.getElementById('current-project-label').textContent = client.code;
+  document.getElementById('project-title').textContent = client.name;
+  document.getElementById('project-desc').textContent = client.desc || '';
+  document.getElementById('current-phase').textContent = client.phase || '—';
+  document.getElementById('meta-start').textContent = client.start ? String(client.start).replace('-', '/') : '—';
+  document.getElementById('meta-fee').textContent = client.fee ? `月額${client.fee}万円` : '—';
+  renderDropdown();
+
+  // 全データ取得
+  try {
+    const res = await apiGet('getAll', { clientId: id });
+    if (res.success) {
+      currentClientData = res.data;
+      renderMeetings(currentClientData.meetings);
+      renderTasks(currentClientData.tasks, currentFilter);
+      renderTimeline(currentClientData.timeline);
+      renderMemos(currentClientData.memos);
+      updateStats();
+      if (isAdminMode) refreshAdminPanel(client);
+    }
+  } catch(err) {
+    showToast('データ取得に失敗しました', 'error');
+  }
+
+  closeDropdown();
+  hideLoading();
+  updateLastUpdated();
+}
+
+function updateStats() {
+  const m = currentClientData.meetings || [];
+  const t = currentClientData.tasks || [];
+  document.getElementById('stat-meetings').textContent = m.length;
+  document.getElementById('stat-tasks-done').textContent = t.filter(x => x.status === 'done').length;
+  document.getElementById('stat-tasks-todo').textContent = t.filter(x => x.status !== 'done').length;
+  document.getElementById('badge-meetings').textContent = m.length;
+  document.getElementById('badge-tasks').textContent = t.length;
+}
+
+function toggleDropdown() {
+  document.getElementById('project-selector-btn').classList.toggle('open');
+  document.getElementById('project-dropdown').classList.toggle('open');
+}
+function closeDropdown() {
+  document.getElementById('project-selector-btn').classList.remove('open');
+  document.getElementById('project-dropdown').classList.remove('open');
+}
+
+// ============================================================
+// クライアント CRUD
+// ============================================================
+function selectColor(c, el) { selectedColor = c; document.querySelectorAll('#color-picker > div').forEach(o => o.style.border = '3px solid transparent'); el.style.border = `3px solid #${c}`; }
+function selectEditColor(c, el) { editSelectedColor = c; document.querySelectorAll('#edit-color-picker > div').forEach(o => o.style.border = '3px solid transparent'); el.style.border = `3px solid #${c}`; }
+
+async function addClient() {
+  const code = document.getElementById('client-code').value.trim();
+  const name = document.getElementById('client-name').value.trim();
+  if (!code || !name) { alert('会社コードと会社名は必須です'); return; }
+  showLoading();
+  const res = await apiPost('addClient', {
+    code, name,
+    desc: document.getElementById('client-desc').value.trim(),
+    industry: document.getElementById('client-industry').value.trim(),
+    service: document.getElementById('client-service').value,
+    start: document.getElementById('client-start').value,
+    fee: document.getElementById('client-fee').value,
+    phase: document.getElementById('client-phase').value.trim() || '進行中',
+    color: selectedColor,
+  });
+  if (res.success) {
+    const allRes = await apiGet('getClients');
+    if (allRes.success) clients = allRes.data;
+    renderDropdown();
+    closeModal('client-modal');
+    showToast('クライアントを追加しました');
+    await selectClient(res.id);
+  } else {
+    showToast('追加に失敗しました', 'error');
+  }
+  hideLoading();
+}
+
+function openEditClientModal() {
+  const c = clients.find(x => x.id === currentClientId);
+  if (!c) return;
+  document.getElementById('edit-client-code').value = c.code || '';
+  document.getElementById('edit-client-name').value = c.name || '';
+  document.getElementById('edit-client-desc').value = c.desc || '';
+  document.getElementById('edit-client-industry').value = c.industry || '';
+  document.getElementById('edit-client-service').value = c.service || 'AI導入支援';
+  document.getElementById('edit-client-start').value = c.start || '';
+  document.getElementById('edit-client-fee').value = c.fee || '';
+  document.getElementById('edit-client-phase').value = c.phase || '';
+  editSelectedColor = c.color || '1B4FD8';
+  document.querySelectorAll('#edit-color-picker > div').forEach(el => {
+    el.style.border = el.dataset.color === editSelectedColor ? `3px solid #${el.dataset.color}` : '3px solid transparent';
+  });
+  document.getElementById('edit-client-modal').classList.add('open');
+}
+
+async function saveEditClient() {
+  const code = document.getElementById('edit-client-code').value.trim();
+  const name = document.getElementById('edit-client-name').value.trim();
+  if (!code || !name) { alert('必須項目を入力してください'); return; }
+  showLoading();
+  await apiPost('updateClient', {
+    id: currentClientId, code, name,
+    desc: document.getElementById('edit-client-desc').value.trim(),
+    industry: document.getElementById('edit-client-industry').value.trim(),
+    service: document.getElementById('edit-client-service').value,
+    start: document.getElementById('edit-client-start').value,
+    fee: document.getElementById('edit-client-fee').value,
+    phase: document.getElementById('edit-client-phase').value.trim(),
+    color: editSelectedColor,
+  });
+  const allRes = await apiGet('getClients');
+  if (allRes.success) clients = allRes.data;
+  closeModal('edit-client-modal');
+  showToast('更新しました');
+  await selectClient(currentClientId);
+  hideLoading();
+}
+
+async function deleteCurrentClient() {
+  const c = clients.find(x => x.id === currentClientId);
+  if (!c || !confirm(`「${c.code}」を削除しますか？`)) return;
+  showLoading();
+  await apiPost('deleteClient', { id: currentClientId });
+  currentClientId = null;
+  sessionStorage.removeItem('currentClientId');
+  const allRes = await apiGet('getClients');
+  if (allRes.success) clients = allRes.data;
+  renderDropdown();
+  document.getElementById('current-project-label').textContent = 'プロジェクトを選択';
+  document.getElementById('project-title').textContent = 'クライアントを選択してください';
+  document.getElementById('project-desc').textContent = '';
+  showToast('削除しました');
+  hideLoading();
+}
+
+// ============================================================
+// MTG記録
+// ============================================================
+function renderMeetings(meetings) {
+  const el = document.getElementById('meeting-list');
+  if (!meetings || !meetings.length) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">📋</div><div>ミーティング記録がありません</div></div>';
+    return;
+  }
+  el.innerHTML = [...meetings].reverse().map(m => {
+    const decisions = Array.isArray(m.decisions) ? m.decisions : [];
+    const todos = Array.isArray(m.todos) ? m.todos : [];
+    return `
+      <div class="meeting-card fade-in">
+        <div class="meeting-header">
+          <div>
+            <div class="meeting-date">${escHtml(m.date)}</div>
+            <div class="meeting-title">${escHtml(m.title)}</div>
+            <div class="meeting-participants">参加：${escHtml(m.participants)}</div>
+          </div>
+          <button onclick="deleteMeeting('${m.id}')" class="admin-only" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:20px;">×</button>
+        </div>
+        <div class="meeting-body">
+          <div>
+            <div class="meeting-section-title">決定事項</div>
+            ${decisions.map(d => `<div class="decision-item"><div class="decision-icon">✓</div><div>${escHtml(d)}</div></div>`).join('') || '<div style="font-size:12px;color:var(--text3);">—</div>'}
+          </div>
+          <div>
+            <div class="meeting-section-title">次回までのToDo</div>
+            ${todos.map(t => `<div class="decision-item"><div class="decision-icon" style="background:var(--accent3-light);color:var(--accent3);">→</div><div>${escHtml(t)}</div></div>`).join('') || '<div style="font-size:12px;color:var(--text3);">—</div>'}
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function addMeeting() {
+  const title = document.getElementById('mtg-title').value.trim();
+  const date = document.getElementById('mtg-date').value;
+  if (!title || !date) { alert('日付とタイトルは必須です'); return; }
+  if (!currentClientId) { alert('クライアントを選択してください'); return; }
+  showLoading();
+  await apiPost('addMeeting', {
+    clientId: currentClientId,
+    date: formatDate(date),
+    title,
+    participants: document.getElementById('mtg-participants').value.trim(),
+    decisions: document.getElementById('mtg-decisions').value.trim().split('\n').filter(x => x),
+    todos: document.getElementById('mtg-todos').value.trim().split('\n').filter(x => x),
+  });
+  closeModal('meeting-modal');
+  clearForm(['mtg-title','mtg-participants','mtg-decisions','mtg-todos','ai-raw-notes']);
+  document.getElementById('mtg-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('ai-parse-status').className = 'ai-parse-status';
+  showToast('MTG記録を追加しました');
+  await selectClient(currentClientId);
+  hideLoading();
+}
+
+async function deleteMeeting(id) {
+  if (!confirm('この記録を削除しますか？')) return;
+  showLoading();
+  await apiPost('deleteMeeting', { id });
+  showToast('削除しました');
+  await selectClient(currentClientId);
+  hideLoading();
+}
+
+// ============================================================
+// AI議事録解析
+// ============================================================
+async function parseWithAI() {
+  const rawText = document.getElementById('ai-raw-notes').value.trim();
+  if (!rawText) { alert('議事録テキストを貼り付けてください'); return; }
+
+  const btn = document.getElementById('ai-parse-btn');
+  const statusEl = document.getElementById('ai-parse-status');
+  const area = document.getElementById('ai-parse-area');
+
+  btn.classList.add('loading');
+  btn.disabled = true;
+  area.classList.add('parsing');
+  statusEl.className = 'ai-parse-status';
+  statusEl.style.display = 'none';
+
+  try {
+    const res = await apiPost('parseNotes', { text: rawText });
+
+    if (res.error) throw new Error(res.error);
+    if (!res.success || !res.data) throw new Error('解析結果が空です');
+
+    const p = res.data;
+    if (p.date) document.getElementById('mtg-date').value = p.date;
+    if (p.title) document.getElementById('mtg-title').value = p.title;
+    if (p.participants) document.getElementById('mtg-participants').value = p.participants;
+    if (Array.isArray(p.decisions)) document.getElementById('mtg-decisions').value = p.decisions.join('\n');
+    if (Array.isArray(p.todos)) document.getElementById('mtg-todos').value = p.todos.join('\n');
+
+    statusEl.className = 'ai-parse-status success';
+    statusEl.textContent = '✅ 解析完了！下のフォームに自動入力しました。確認して「追加する」を押してください。';
+    statusEl.style.display = 'block';
+  } catch(err) {
+    statusEl.className = 'ai-parse-status error';
+    statusEl.textContent = `❌ ${err.message}`;
+    statusEl.style.display = 'block';
+  } finally {
+    btn.classList.remove('loading');
+    btn.disabled = false;
+    area.classList.remove('parsing');
+  }
+}
+
+// ============================================================
+// タスク
+// ============================================================
+function renderTasks(tasks, filter) {
+  currentFilter = filter;
+  const el = document.getElementById('task-list');
+  if (!tasks || !tasks.length) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div><div>タスクがありません</div></div>'; return; }
+  const filtered = filter === 'all' ? tasks : tasks.filter(t => t.status === filter);
+  if (!filtered.length) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div><div>該当なし</div></div>'; return; }
+
+  const statusMap = { todo: ['未着手','status-todo'], doing: ['進行中','status-doing'], done: ['完了','status-done'], waiting: ['確認待ち','status-waiting'] };
+  const prioMap = { high: ['高','p-high'], mid: ['中','p-mid'], low: ['低','p-low'] };
+
+  el.innerHTML = filtered.map(t => {
+    const [sLabel, sClass] = statusMap[t.status] || statusMap.todo;
+    const [pLabel, pClass] = prioMap[t.priority] || prioMap.mid;
+    const isDone = t.status === 'done';
+    const isOverdue = t.due && !isDone && new Date(t.due) < new Date();
+    const avClass = t.assignee === '棚原' ? 'avatar-h' : t.assignee === '両者' ? 'avatar-b' : 'avatar-c';
+    const avText = t.assignee === '棚原' ? '棚' : t.assignee === '両者' ? '両' : 'C';
+    return `
+      <div class="task-row">
+        <div><div class="task-name${isDone?' done':''}">${escHtml(t.name)}</div>${t.memo?`<div style="font-size:11px;color:var(--text3);margin-top:2px;">${escHtml(t.memo)}</div>`:''}</div>
+        <div class="task-assignee"><div class="avatar ${avClass}">${avText}</div>${escHtml(t.assignee)}</div>
+        <div class="task-due${isOverdue?' overdue':''}">${t.due||'—'}</div>
+        <div><span style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text2);"><span class="priority-dot ${pClass}"></span>${pLabel}</span></div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <span class="status-badge ${sClass}">${sLabel}</span>
+          <button onclick="cycleStatus('${t.id}','${t.status}')" class="admin-only" style="background:none;border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:10px;color:var(--text3);padding:2px 6px;">次へ</button>
+          <button onclick="deleteTask('${t.id}')" class="admin-only" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:16px;">×</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function addTask() {
+  const name = document.getElementById('task-name').value.trim();
+  if (!name) { alert('タスク名は必須です'); return; }
+  if (!currentClientId) { alert('クライアントを選択してください'); return; }
+  showLoading();
+  await apiPost('addTask', {
+    clientId: currentClientId, name,
+    assignee: document.getElementById('task-assignee').value,
+    due: document.getElementById('task-due').value,
+    priority: document.getElementById('task-priority').value,
+    status: document.getElementById('task-status').value,
+    memo: document.getElementById('task-memo').value.trim(),
+  });
+  closeModal('task-modal');
+  clearForm(['task-name','task-memo']);
+  document.getElementById('task-due').value = new Date().toISOString().split('T')[0];
+  showToast('タスクを追加しました');
+  await selectClient(currentClientId);
+  hideLoading();
+}
+
+async function cycleStatus(id, current) {
+  const order = ['todo','doing','waiting','done'];
+  const next = order[(order.indexOf(current)+1) % order.length];
+  showLoading();
+  await apiPost('updateTask', { id, status: next });
+  await selectClient(currentClientId);
+  hideLoading();
+}
+
+async function deleteTask(id) {
+  if (!confirm('このタスクを削除しますか？')) return;
+  showLoading();
+  await apiPost('deleteTask', { id });
+  showToast('削除しました');
+  await selectClient(currentClientId);
+  hideLoading();
+}
+
+function filterTasks(filter, btn) {
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderTasks(currentClientData.tasks, filter);
+}
+
+// ============================================================
+// タイムライン
+// ============================================================
+function renderTimeline(timeline) {
+  const el = document.getElementById('timeline-list');
+  if (!timeline || !timeline.length) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">📍</div><div>進捗記録がありません</div></div>'; return; }
+  const icons = { done:'✓', current:'▶', upcoming:'○' };
+  el.innerHTML = timeline.map(t => `
+    <div class="timeline-item">
+      <div class="timeline-dot ${t.status}">${icons[t.status]||'○'}</div>
+      <div class="timeline-content">
+        <div class="timeline-date">${escHtml(t.date)}</div>
+        <div class="timeline-title">${escHtml(t.title)}</div>
+        ${t.desc?`<div class="timeline-desc">${escHtml(t.desc)}</div>`:''}
+      </div>
+      <button onclick="deleteTimeline('${t.id}')" class="admin-only" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:16px;align-self:flex-start;padding:4px;">×</button>
+    </div>
+  `).join('');
+}
+
+async function addTimeline() {
+  const title = document.getElementById('tl-title').value.trim();
+  const date = document.getElementById('tl-date').value.trim();
+  if (!title || !date) { alert('必須項目を入力してください'); return; }
+  showLoading();
+  await apiPost('addTimeline', { clientId: currentClientId, date, title, desc: document.getElementById('tl-desc').value.trim(), status: document.getElementById('tl-status').value });
+  closeModal('timeline-modal');
+  clearForm(['tl-title','tl-date','tl-desc']);
+  showToast('追加しました');
+  await selectClient(currentClientId);
+  hideLoading();
+}
+
+async function deleteTimeline(id) {
+  if (!confirm('削除しますか？')) return;
+  showLoading();
+  await apiPost('deleteTimeline', { id });
+  await selectClient(currentClientId);
+  hideLoading();
+}
+
+// ============================================================
+// メモ
+// ============================================================
+function renderMemos(memos) {
+  const el = document.getElementById('memo-list');
+  if (!memos || !memos.length) { el.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">📎</div><div>メモがありません</div></div>'; return; }
+  const typeMap = {
+    memo: { icon:'📝', color:'#EEF2FF', border:'#C7D7F8', tag:'メモ', tagBg:'#EEF2FF', tagColor:'#1B4FD8' },
+    link: { icon:'🔗', color:'#F0FDF4', border:'#A7F3D0', tag:'資料', tagBg:'#D1FAE5', tagColor:'#065F46' },
+    decision: { icon:'✅', color:'#ECFDF5', border:'#A7F3D0', tag:'決定事項', tagBg:'#D1FAE5', tagColor:'#065F46' },
+    issue: { icon:'⚠️', color:'#FFF7ED', border:'#FDE68A', tag:'課題', tagBg:'#FEF3C7', tagColor:'#92400E' },
+  };
+  el.innerHTML = memos.map(m => {
+    const t = typeMap[m.type] || typeMap.memo;
+    return `
+      <div class="memo-card fade-in" style="border-color:${t.border}">
+        <div class="memo-card-header">
+          <div class="memo-icon" style="background:${t.color};">${t.icon}</div>
+          <div class="memo-card-title">${escHtml(m.title)}</div>
+          <button onclick="deleteMemo('${m.id}')" class="admin-only" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:16px;margin-left:auto;">×</button>
+        </div>
+        <div class="memo-content" style="white-space:pre-line;">${escHtml(m.content)}</div>
+        ${m.url?`<div style="margin-top:10px;"><a href="${escHtml(m.url)}" target="_blank" style="font-size:12px;color:var(--accent);">🔗 リンクを開く</a></div>`:''}
+        <div><span class="memo-tag" style="background:${t.tagBg};color:${t.tagColor};">${t.tag}</span><span style="font-size:11px;color:var(--text3);margin-left:8px;">${m.date||''}</span></div>
+      </div>`;
+  }).join('');
+}
+
+async function addMemo() {
+  const title = document.getElementById('memo-title').value.trim();
+  if (!title) { alert('タイトルは必須です'); return; }
+  if (!currentClientId) { alert('クライアントを選択してください'); return; }
+  showLoading();
+  await apiPost('addMemo', { clientId: currentClientId, type: document.getElementById('memo-type').value, title, content: document.getElementById('memo-content').value.trim(), url: document.getElementById('memo-url').value.trim() });
+  closeModal('memo-modal');
+  clearForm(['memo-title','memo-content','memo-url']);
+  showToast('追加しました');
+  await selectClient(currentClientId);
+  hideLoading();
+}
+
+async function deleteMemo(id) {
+  if (!confirm('削除しますか？')) return;
+  showLoading();
+  await apiPost('deleteMemo', { id });
+  await selectClient(currentClientId);
+  hideLoading();
+}
+
+// ============================================================
+// ユーティリティ
+// ============================================================
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(`panel-${name}`).classList.add('active');
+}
+
+function openAddClientModal() { closeDropdown(); document.getElementById('client-modal').classList.add('open'); }
+function openAddMeetingModal() { if(!currentClientId){alert('先にクライアントを選択');return;} document.getElementById('meeting-modal').classList.add('open'); }
+function openAddTaskModal() { if(!currentClientId){alert('先にクライアントを選択');return;} document.getElementById('task-modal').classList.add('open'); }
+function openAddTimelineModal() { if(!currentClientId){alert('先にクライアントを選択');return;} document.getElementById('timeline-modal').classList.add('open'); }
+function openAddMemoModal() { if(!currentClientId){alert('先にクライアントを選択');return;} document.getElementById('memo-modal').classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+function escHtml(str) { return str ? String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') : ''; }
+function formatDate(ds) { if(!ds) return ''; const d = new Date(ds); return isNaN(d) ? ds : `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`; }
+function clearForm(ids) { ids.forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; }); }
+</script>
+</body>
+</html>
