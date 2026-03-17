@@ -258,6 +258,45 @@
 
   /* トースト通知 */
   .toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; color: white; z-index: 9999; animation: toastIn 0.3s ease; box-shadow: var(--shadow-lg); }
+
+  /* 完了済タスク折りたたみ */
+  .done-tasks-toggle {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 16px; cursor: pointer;
+    font-size: 13px; font-weight: 600; color: var(--text2);
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); transition: all 0.15s;
+    user-select: none;
+  }
+  .done-tasks-toggle:hover { background: var(--surface2); }
+  .done-tasks-toggle #done-toggle-icon { font-size: 10px; color: var(--text3); transition: transform 0.2s; }
+  .done-tasks-toggle.open #done-toggle-icon { transform: rotate(90deg); }
+  .done-tasks-count {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 20px; height: 20px; padding: 0 6px;
+    border-radius: 10px; font-size: 11px; font-weight: 700;
+    background: var(--accent2-light); color: #065F46;
+  }
+
+  /* ステータスセレクト */
+  .status-select {
+    padding: 4px 8px; border-radius: 12px;
+    font-size: 11px; font-weight: 600;
+    border: 1px solid var(--border);
+    cursor: pointer; outline: none;
+    font-family: 'Noto Sans JP', sans-serif;
+    transition: all 0.15s;
+    -webkit-appearance: none; -moz-appearance: none; appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2394A3B8'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    padding-right: 22px;
+  }
+  .status-select:hover { border-color: var(--accent); }
+  .status-select.s-todo { background-color: var(--surface2); color: var(--text3); }
+  .status-select.s-doing { background-color: #FEF3C7; color: #92400E; border-color: #FDE68A; }
+  .status-select.s-done { background-color: var(--accent2-light); color: #065F46; border-color: #A7F3D0; }
+  .status-select.s-waiting { background-color: var(--danger-light); color: var(--danger); border-color: #FECACA; }
   .toast.success { background: var(--accent2); }
   .toast.error { background: var(--danger); }
   .toast.hidden { animation: toastOut 0.3s ease forwards; }
@@ -374,15 +413,28 @@
     <div class="tasks-header">
       <div class="section-title">タスク一覧</div>
       <div class="filter-group">
-        <button class="filter-btn active" onclick="filterTasks('all', this)">すべて</button>
+        <button class="filter-btn active" onclick="filterTasks('active', this)">進行中</button>
         <button class="filter-btn" onclick="filterTasks('todo', this)">未着手</button>
-        <button class="filter-btn" onclick="filterTasks('doing', this)">進行中</button>
-        <button class="filter-btn" onclick="filterTasks('done', this)">完了</button>
+        <button class="filter-btn" onclick="filterTasks('waiting', this)">確認待ち</button>
+        <button class="filter-btn" onclick="filterTasks('all', this)">すべて</button>
       </div>
     </div>
     <div class="task-table">
       <div class="task-table-header"><div>タスク名</div><div>担当</div><div>期限</div><div>優先度</div><div>ステータス</div></div>
       <div id="task-list"></div>
+    </div>
+    <!-- 完了済タスク（折りたたみ） -->
+    <div id="done-tasks-section" style="margin-top:16px;display:none;">
+      <div class="done-tasks-toggle" onclick="toggleDoneTasks()">
+        <span id="done-toggle-icon">▶</span>
+        <span>完了済タスク</span>
+        <span class="done-tasks-count" id="done-tasks-count">0</span>
+      </div>
+      <div id="done-tasks-body" style="display:none;">
+        <div class="task-table" style="opacity:0.75;">
+          <div id="done-task-list"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -598,7 +650,7 @@
 // ============================================================
 // ★★★ GAS APIのURLをここに設定 ★★★
 // ============================================================
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbyPIxK0dd5r-tcBRwctlXdJcFOJySSHjo5kM_ZLKxhC8wcPSt6L5hJaXxjW0ddEfUWA/exec';
+const GAS_URL = 'YOUR_GAS_DEPLOY_URL_HERE';
 // ============================================================
 
 // ============================================================
@@ -608,7 +660,7 @@ let clients = [];
 let currentClientId = null;
 let currentClientData = { meetings: [], tasks: [], timeline: [], memos: [] };
 let isAdminMode = false;
-let currentFilter = 'all';
+let currentFilter = 'active';
 let selectedColor = '1B4FD8';
 let editSelectedColor = '1B4FD8';
 const ADMIN_PASS = '123456789';
@@ -743,7 +795,7 @@ async function saveAdminMemo() {
 function renderDropdown() {
   document.getElementById('dropdown-items').innerHTML = clients.map(c => `
     <div class="dropdown-item ${currentClientId === c.id ? 'active' : ''}" onclick="selectClient('${c.id}')">
-      <div class="dropdown-badge" style="background:#${c.color||'1B4FD8'}20; color:#${c.color||'1B4FD8'};">${(c.code||'?').charAt(0)}</div>
+      <div class="dropdown-badge" style="background:#${c.color||'1B4FD8'}20; color:#${c.color||'1B4FD8'};">${String(c.code||'?').charAt(0)}</div>
       <div>
         <div style="font-size:13px;font-weight:500;">${escHtml(c.code)}</div>
         <div style="font-size:11px;color:var(--text3);">${escHtml(c.service)}</div>
@@ -1018,33 +1070,95 @@ async function parseWithAI() {
 function renderTasks(tasks, filter) {
   currentFilter = filter;
   const el = document.getElementById('task-list');
-  if (!tasks || !tasks.length) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div><div>タスクがありません</div></div>'; return; }
-  const filtered = filter === 'all' ? tasks : tasks.filter(t => t.status === filter);
-  if (!filtered.length) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div><div>該当なし</div></div>'; return; }
+  const doneEl = document.getElementById('done-task-list');
+  const doneSection = document.getElementById('done-tasks-section');
 
-  const statusMap = { todo: ['未着手','status-todo'], doing: ['進行中','status-doing'], done: ['完了','status-done'], waiting: ['確認待ち','status-waiting'] };
+  if (!tasks || !tasks.length) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div><div>タスクがありません</div></div>';
+    doneSection.style.display = 'none';
+    return;
+  }
+
+  // 完了タスクと未完了タスクを分離
+  const activeTasks = tasks.filter(t => t.status !== 'done');
+  const doneTasks = tasks.filter(t => t.status === 'done');
+
+  // フィルター適用（未完了タスクのみ対象）
+  let filtered;
+  if (filter === 'all') {
+    filtered = activeTasks;
+  } else if (filter === 'active') {
+    filtered = activeTasks.filter(t => t.status === 'doing');
+  } else {
+    filtered = activeTasks.filter(t => t.status === filter);
+  }
+
+  // 未完了タスク描画
+  if (!filtered.length) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div><div>該当するタスクはありません</div></div>';
+  } else {
+    el.innerHTML = filtered.map(t => renderTaskRow(t, tasks)).join('');
+  }
+
+  // 完了済タスク描画
+  if (doneTasks.length > 0) {
+    doneSection.style.display = 'block';
+    document.getElementById('done-tasks-count').textContent = doneTasks.length;
+    doneEl.innerHTML = doneTasks.map(t => renderTaskRow(t, tasks)).join('');
+  } else {
+    doneSection.style.display = 'none';
+  }
+}
+
+function renderTaskRow(t, allTasks) {
   const prioMap = { high: ['高','p-high'], mid: ['中','p-mid'], low: ['低','p-low'] };
+  const [pLabel, pClass] = prioMap[t.priority] || prioMap.mid;
+  const isDone = t.status === 'done';
+  const isOverdue = t.due && !isDone && new Date(t.due) < new Date();
+  const avClass = t.assignee === '棚原' ? 'avatar-h' : t.assignee === '両者' ? 'avatar-b' : 'avatar-c';
+  const avText = t.assignee === '棚原' ? '棚' : t.assignee === '両者' ? '両' : 'C';
 
-  el.innerHTML = filtered.map(t => {
-    const [sLabel, sClass] = statusMap[t.status] || statusMap.todo;
-    const [pLabel, pClass] = prioMap[t.priority] || prioMap.mid;
-    const isDone = t.status === 'done';
-    const isOverdue = t.due && !isDone && new Date(t.due) < new Date();
-    const avClass = t.assignee === '棚原' ? 'avatar-h' : t.assignee === '両者' ? 'avatar-b' : 'avatar-c';
-    const avText = t.assignee === '棚原' ? '棚' : t.assignee === '両者' ? '両' : 'C';
-    return `
-      <div class="task-row">
-        <div><div class="task-name${isDone?' done':''}">${escHtml(t.name)}</div>${t.memo?`<div style="font-size:11px;color:var(--text3);margin-top:2px;">${escHtml(t.memo)}</div>`:''}</div>
-        <div class="task-assignee"><div class="avatar ${avClass}">${avText}</div>${escHtml(t.assignee)}</div>
-        <div class="task-due${isOverdue?' overdue':''}">${t.due||'—'}</div>
-        <div><span style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text2);"><span class="priority-dot ${pClass}"></span>${pLabel}</span></div>
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-          <span class="status-badge ${sClass}">${sLabel}</span>
-          <button onclick="cycleStatus('${t.id}','${t.status}')" class="admin-only" style="background:none;border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:10px;color:var(--text3);padding:2px 6px;">次へ</button>
-          <button onclick="deleteTask('${t.id}')" class="admin-only" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:16px;">×</button>
-        </div>
-      </div>`;
-  }).join('');
+  const statusOptions = [
+    { value: 'todo', label: '未着手' },
+    { value: 'doing', label: '進行中' },
+    { value: 'waiting', label: '確認待ち' },
+    { value: 'done', label: '✅ 完了' },
+  ];
+  const selectClass = 's-' + (t.status || 'todo');
+  const selectHtml = `<select class="status-select ${selectClass}" onchange="changeStatus('${t.id}', this.value)">
+    ${statusOptions.map(o => `<option value="${o.value}" ${t.status === o.value ? 'selected' : ''}>${o.label}</option>`).join('')}
+  </select>`;
+
+  return `
+    <div class="task-row">
+      <div><div class="task-name${isDone?' done':''}">${escHtml(t.name)}</div>${t.memo?`<div style="font-size:11px;color:var(--text3);margin-top:2px;">${escHtml(t.memo)}</div>`:''}</div>
+      <div class="task-assignee"><div class="avatar ${avClass}">${avText}</div>${escHtml(t.assignee)}</div>
+      <div class="task-due${isOverdue?' overdue':''}">${t.due||'—'}</div>
+      <div><span style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text2);"><span class="priority-dot ${pClass}"></span>${pLabel}</span></div>
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        ${selectHtml}
+        <button onclick="deleteTask('${t.id}')" class="admin-only" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:16px;">×</button>
+      </div>
+    </div>`;
+}
+
+function toggleDoneTasks() {
+  const body = document.getElementById('done-tasks-body');
+  const toggle = document.querySelector('.done-tasks-toggle');
+  if (body.style.display === 'none') {
+    body.style.display = 'block';
+    toggle.classList.add('open');
+  } else {
+    body.style.display = 'none';
+    toggle.classList.remove('open');
+  }
+}
+
+async function changeStatus(id, newStatus) {
+  showLoading();
+  await apiPost('updateTask', { id, status: newStatus });
+  await selectClient(currentClientId);
+  hideLoading();
 }
 
 async function addTask() {
@@ -1064,15 +1178,6 @@ async function addTask() {
   clearForm(['task-name','task-memo']);
   document.getElementById('task-due').value = new Date().toISOString().split('T')[0];
   showToast('タスクを追加しました');
-  await selectClient(currentClientId);
-  hideLoading();
-}
-
-async function cycleStatus(id, current) {
-  const order = ['todo','doing','waiting','done'];
-  const next = order[(order.indexOf(current)+1) % order.length];
-  showLoading();
-  await apiPost('updateTask', { id, status: next });
   await selectClient(currentClientId);
   hideLoading();
 }
